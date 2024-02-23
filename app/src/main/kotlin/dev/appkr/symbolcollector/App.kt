@@ -1,5 +1,7 @@
 package dev.appkr.symbolcollector
 
+import de.m3y.kformat.Table
+import de.m3y.kformat.table
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -94,5 +96,20 @@ data class SymbolInfo(
 fun main() {
     val collector = SymbolCollector()
     val allSymbols = collector.collect(System.getProperty("user.home") + "/path/to/yours")
-    println(allSymbols)
+    val render = table {
+        header("package", "class", "method")
+
+        allSymbols.forEach {
+            row(it.`package`, it.`class`, it.method)
+        }
+
+        hints {
+            alignment("package", Table.Hints.Alignment.LEFT)
+            alignment("class", Table.Hints.Alignment.LEFT)
+            alignment("method", Table.Hints.Alignment.LEFT)
+            borderStyle = Table.BorderStyle.NONE // or NONE
+        }
+    }.render(StringBuilder())
+
+    println(render)
 }

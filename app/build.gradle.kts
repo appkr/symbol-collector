@@ -8,6 +8,7 @@ repositories {
 }
 
 dependencies {
+    implementation("de.m3y.kformat:kformat:0.10")
 }
 
 java {
