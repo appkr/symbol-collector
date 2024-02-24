@@ -8,21 +8,47 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.regex.Pattern
 import kotlin.io.path.notExists
+import kotlin.system.exitProcess
+
+fun main(args: Array<String>) {
+    if (args.isEmpty()) {
+        println("Kotlin 프로젝트의 심볼을 수집하고 출력합니다")
+        println("")
+        println("  java -jar app.jar {path} {format}")
+        println("  - path: 수집할 프로젝트의 절대 경로 e.g. \$HOME/path/to/project")
+        println("  - format: 출력 형식 (table 또는 csv, 제출하지 않으면 table)")
+        exitProcess(1)
+    }
+
+    val path = Paths.get(args[0])
+    if (path.notExists()) {
+        println("경로가 정확하지 않습니다: $path")
+        exitProcess(1)
+    }
+
+    val format = args.getOrNull(1) ?: "table"
+    if (format !in listOf("table", "csv")) {
+        println("허용하지 않는 형식입니다: $format")
+        exitProcess(1)
+    }
+
+    val collector = SymbolCollector()
+    val symbols = collector.collect(path)
+
+    val formatter = if (format == "csv") CsvFormatter() else TableFormatter()
+    val output = formatter.format(symbols)
+
+    println(output)
+}
 
 class SymbolCollector {
-    fun collect(path: String): Collection<SymbolInfo> {
-        val directoryPath = Paths.get(path)
-        if (directoryPath.notExists()) {
-            throw IllegalArgumentException("경로를 확인해주세요: $directoryPath")
-        }
-
+    fun collect(path: Path): Collection<SymbolInfo> {
         val store = mutableListOf<SymbolInfo>()
-        Files.walk(directoryPath)
+        Files.walk(path)
             .filter(Files::isRegularFile)
             .forEach { filePath ->
                 // kotlin 파일이 아니면 건너뛴다
                 if (!filePath.toString().endsWith(".kt")) return@forEach
-
                 collect(filePath, store)
             }
 
@@ -49,7 +75,7 @@ class SymbolCollector {
                     }
 
                     // 가정: class 매칭 시점에 package는 이미 매칭되었다
-                    if (symbolInfo.path.isBlank()) return@forEachIndexed
+                    if (symbolInfo.`package`.isBlank()) return@forEachIndexed
 
                     // 파일에 선언된 class 갯수만큼 매칭된다
                     val classMatcher = PATTERN_CLASS.matcher(lineContent)
@@ -59,19 +85,19 @@ class SymbolCollector {
                     }
 
                     // 결정: class에 포함되지 않는 method는 수집하지 않는다: e.g. top-level (extension) function
-                    if (symbolInfo.path.isBlank()) return@forEachIndexed
+                    if (symbolInfo.`class`.isBlank()) return@forEachIndexed
 
-                    // 파일에 선언된 메서드 갯수만큼 매칭될 것이다
+                    // 파일에 선언된 메서드 갯수만큼 매칭된다
                     val methodMatcher = PATTERN_METHOD.matcher(lineContent)
                     if (methodMatcher.matches()) {
                         symbolInfo.line = lineNo + 1
                         symbolInfo.method = methodMatcher.group("method")
                         store.add(symbolInfo.copy())
-                        return@forEachIndexed // 모델 하나가 완성됐다
+                        return@forEachIndexed // SymbolInfo 모델 하나가 완성됐다
                     }
                 }
 
-            // package, class, method 모든 값을 초기화한다
+            // SymbolInfo 모델의 모든 값을 초기화한다
             symbolInfo = SymbolInfo()
         }
     }
@@ -93,23 +119,44 @@ data class SymbolInfo(
     var method: String = "",
 )
 
-fun main() {
-    val collector = SymbolCollector()
-    val allSymbols = collector.collect(System.getProperty("user.home") + "/path/to/yours")
-    val render = table {
-        header("package", "class", "method")
+interface Formatter {
+    fun format(symbols: Collection<SymbolInfo>): StringBuilder
+}
 
-        allSymbols.forEach {
-            row(it.`package`, it.`class`, it.method)
+class TableFormatter : Formatter {
+    override fun format(symbols: Collection<SymbolInfo>): StringBuilder {
+        return table {
+            header("path", "package", "class", "method")
+
+            symbols.forEach {
+                row("${it.`path`}:${it.line}", it.`package`, it.`class`, it.method)
+            }
+
+            hints {
+                alignment("path", Table.Hints.Alignment.LEFT)
+                alignment("package", Table.Hints.Alignment.LEFT)
+                alignment("class", Table.Hints.Alignment.LEFT)
+                alignment("method", Table.Hints.Alignment.LEFT)
+                borderStyle = Table.BorderStyle.NONE
+            }
+        }.render(StringBuilder())
+    }
+}
+
+class CsvFormatter : Formatter {
+    override fun format(symbols: Collection<SymbolInfo>): StringBuilder {
+        val builder = StringBuilder()
+        builder.append("path,package,class,method$CRLF")
+        symbols.forEach {
+            builder.append(
+                listOf("${it.`path`}:${it.line}", it.`package`, it.`class`, it.method).joinToString(",") { it }
+            ).append(CRLF)
         }
 
-        hints {
-            alignment("package", Table.Hints.Alignment.LEFT)
-            alignment("class", Table.Hints.Alignment.LEFT)
-            alignment("method", Table.Hints.Alignment.LEFT)
-            borderStyle = Table.BorderStyle.NONE // or NONE
-        }
-    }.render(StringBuilder())
+        return builder
+    }
 
-    println(render)
+    companion object {
+        private val CRLF = System.lineSeparator()
+    }
 }
