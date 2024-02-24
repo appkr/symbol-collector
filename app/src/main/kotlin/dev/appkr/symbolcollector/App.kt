@@ -47,8 +47,12 @@ class SymbolCollector {
         Files.walk(path)
             .filter(Files::isRegularFile)
             .forEach { filePath ->
+                // build 폴더는 건너뛴다
+                if (filePath.toString().contains("build")) return@forEach
+
                 // kotlin 파일이 아니면 건너뛴다
                 if (!filePath.toString().endsWith(".kt")) return@forEach
+
                 collect(filePath, store)
             }
 
@@ -103,9 +107,14 @@ class SymbolCollector {
     }
 
     companion object {
+        // https://regex101.com/r/UCiL51/1
         private val PATTERN_PACKAGE = Pattern.compile("^package\\s+(?<package>[\\p{L}\\d_.]+)\$")
+
+        // https://regex101.com/r/Vx2IrH/1
         private val PATTERN_CLASS =
             Pattern.compile("^((open\\s+|private\\s+|internal\\s+|data\\s+)?class|object|interface)\\s+(?<class>[\\p{L}\\d_]+)[<>\\s]?.*")
+
+        // https://regex101.com/r/JToHo1/1
         private val PATTERN_METHOD =
             Pattern.compile("^\\s*(override\\s+)?((open\\s+|private\\s+|protected\\s+|internal\\s+|inline\\s+|operator\\s+)?.*fun)\\s+(?<method>[\\p{L}\\d_]+)\\s?.*")
     }

@@ -1,0 +1,46 @@
+name: Build and Prerelease
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: build jar
+        run: |
+          ./gradlew clean build
+      - name: upload jar
+        uses: actions/upload-artifact@v2
+        with:
+          name: jar
+          path: app/build/libs/app-all.jar
+          retention-days: 1
+
+  # release
+  # https://electricui.com/blog/github-actions
+  release:
+    name: create prerelease
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: download artifact
+        uses: actions/download-artifact@v2
+      - name: display fetched artifacts and rename
+        run: ls -alR; mv jar/app-all.jar jar/symbol-collector.jar
+      - name: create a github release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          automatic_release_tag: latest
+          prerelease: true
+          title: Development Build
+          files: |
+            jar/symbol-collector.jar
